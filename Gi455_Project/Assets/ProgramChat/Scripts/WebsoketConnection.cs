@@ -21,29 +21,35 @@ namespace PorgramChat
         }
 
         string tempMessage;
+        [SerializeField] string userName;
+        [SerializeField] string name;
+        [SerializeField] string roomName;
+        [SerializeField] int profileID = 0;
+        private WebSocket webSocket;
 
         [Header("UI Login")]
-        public GameObject loginPanal;
+        public GameObject loginPanal;       
+        public InputField loginUserNameInput;
+        public InputField loginPasswordInput;
+
+        [Header("UI Register")]
+        public GameObject registerPanal;
+        public InputField regisNameInput;
+        public InputField regisUserNameInput;
+        public InputField regisPasswordInput;
+        public InputField regisRePasswordInput;
         public Image profilePic;
-        [SerializeField] private Sprite[] pic_sprites;
-        int profileID;
-        public InputField clientInput;
-        public InputField userNameInput;
+        [SerializeField] private Sprite[] pic_sprites;        
 
         [Header("UI Lobby")]
         public GameObject lobbyPanal;
-        public GameObject erorrPopupPanal;
-        public Text erorrText;
+        public Text lobbyText;
         public Button createRoomBtn;
         public Button joinRoomBtn;
         public Button backBtn;
         public InputField roomNameInputField;
         Vector3 uiLobbyUp;
         Vector3 uiLobbyDown;
-
-        string userName;
-        string roomName;
-        private WebSocket webSocket;
 
         [Header("UI ChatRoom")]
         public Image profileOnChatPic;
@@ -56,6 +62,11 @@ namespace PorgramChat
         public Transform spawnPicLeftPos;
         public Transform newTextParant;
         List<Text> oldText = new List<Text>();
+        public InputField clientInput;
+
+        [Header("UI ErorrPopup")]
+        public GameObject erorrPopupPanal;
+        public Text erorrText;
 
 
         void Start()
@@ -65,8 +76,10 @@ namespace PorgramChat
             webSocket = new WebSocket("ws://127.0.0.1:25500/");
 
             webSocket.OnMessage += OnMessage;
-
-            innitLobby();
+            webSocket.Connect();
+            loginPanal.SetActive(true);
+            registerPanal.SetActive(false);
+            //innitLobby();
             //webSocket.Connect();
             //webSocket.Send("Test");
         }
@@ -75,6 +88,8 @@ namespace PorgramChat
         {
             UpdateMessageFormServer();
         }
+
+        
 
         private void OnDestroy()
         {
@@ -89,12 +104,12 @@ namespace PorgramChat
         {
             if (!string.IsNullOrEmpty(clientInput.text))
             {
-                MessageData mesData = new MessageData(roomName,userName, clientInput.text,profileID);
+                MessageData mesData = new MessageData(roomName, name,userName, clientInput.text,profileID);
                 clientInput.text = "";
                 string mesData_json = JsonUtility.ToJson(mesData);
                 //Debug.Log(mesData_json);
 
-                SocketEvent dataToServer = new SocketEvent("SendMessage", mesData_json);
+                SocketEvent dataToServer = new SocketEvent("Message", mesData_json);
                 string dataToServerStr = JsonUtility.ToJson(dataToServer);
                 webSocket.Send(dataToServerStr);
                 Debug.Log("Send ---> " + dataToServerStr);
@@ -114,17 +129,17 @@ namespace PorgramChat
                 Debug.Log("Get ---> " + tempMessage);
                 SocketEvent loadData = JsonUtility.FromJson<SocketEvent>(tempMessage);
 
-                if (loadData.eventName == "SendMessage") 
+                if (loadData.eventName == "Message") 
                 {
                     MessageData loadMessageData = JsonUtility.FromJson<MessageData>(loadData.data);
                     Text currentText = Instantiate(textPrefabs, rect.position, Quaternion.identity, newTextParant);
 
-                    if (loadMessageData.clientName == userName)
+                    if (loadMessageData.userName == userName)
                     {
                         Image spawnProfile = Instantiate(profilefabs,
                             spawnPicRightPos.position, Quaternion.identity,
                             currentText.gameObject.transform);
-                        currentText.text = $"{loadMessageData.clientName} : {loadMessageData.message}";
+                        currentText.text = $"{loadMessageData.name} : {loadMessageData.message}";
                         currentText.alignment = TextAnchor.MiddleRight;
                         spawnProfile.sprite = pic_sprites[loadMessageData.profileClientID];
                     }
@@ -133,7 +148,7 @@ namespace PorgramChat
                         Image spawnProfile = Instantiate(profilefabs,
                             spawnPicLeftPos.position, Quaternion.identity,
                             currentText.gameObject.transform);
-                        currentText.text = $"{loadMessageData.clientName} : {loadMessageData.message}";
+                        currentText.text = $"{loadMessageData.name} : {loadMessageData.message}";
                         currentText.alignment = TextAnchor.MiddleLeft;
                         spawnProfile.sprite = pic_sprites[loadMessageData.profileClientID];
                     }
@@ -155,7 +170,7 @@ namespace PorgramChat
                     if(loadData.data == "CreateRoomFail")
                     {
                         //Debug.LogError("client create room fail.");
-                        ShowErrorPopup("Create room fail.\nRoom Name is Found.");
+                        ShowErrorPopup("Create room fail.\nRoom Name is Found.", Color.red);
                     }
                     else
                     {
@@ -169,7 +184,7 @@ namespace PorgramChat
                     if (loadData.data == "JoinRoomFail")
                     {
                         //Debug.LogError("client Join room fail.");
-                        ShowErrorPopup("Join room fail.\nRoom Name not Found.");
+                        ShowErrorPopup("Join room fail.\nRoom Name not Found.", Color.red);
                     }
                     else
                     {
@@ -182,47 +197,120 @@ namespace PorgramChat
                 {
                     Debug.Log(loadData.eventName + " : " + loadData.data);
                 }               
+                else if(loadData.eventName == "Login")
+                {
+                    if(loadData.data == "LoginFail")
+                    {
+                        //LoginFail ShowErrorPopup
+                        ShowErrorPopup("Login Fail UserName or Password Incorrect",Color.red);
+                    }
+                    else
+                    {
+                        UserData userDataOb = JsonUtility.FromJson<UserData>(loadData.data);
+                        Debug.Log("Login Success UserName:"+ userDataOb.userName+" Name:"+ userDataOb.name);
+                        //Debug.Log(userDataOb.userName); // + " : " + userDataOb.password + " : " + userDataOb.name + " : " + userDataOb.profileClientID.ToString());
 
+                        userName = userDataOb.userName;                       
+                        name = userDataOb.name;
+                        userNameOnChat.text = userDataOb.name;
+                        profileID = userDataOb.profileClientID;
+                        profileOnChatPic.sprite = pic_sprites[profileID];
+
+                        //ShowLobbyPanal
+                        innitLobby();
+                    }
+                }
+                else if (loadData.eventName == "Register")
+                {
+                    if(loadData.data == "RegisterSuccess")
+                    {
+                        registerPanal.SetActive(false);
+                        ShowErrorPopup("Register Success", Color.green);
+                        OnClickBackToLoginBtn();
+                    }
+                    else if (loadData.data == "RegisterFail")
+                    {
+                        ShowErrorPopup("Register Fial That UserName is Taken. Try Another", Color.red);
+                    }
+                }
                 tempMessage = "";
             }
         }
 
-
+        //*************** >>OnClick Button<< *****************
         public void OnClickLoginBtn()
         {
-            loginPanal.SetActive(false);                    
-            userName = userNameInput.text;
-            userNameOnChat.text = userName;
-            webSocket.Connect();
-            SocketEvent dataToServer = new SocketEvent("ClientConnet", userName);
+            //loginPanal.SetActive(false);                    
+            if(string.IsNullOrEmpty(loginUserNameInput.text) || string.IsNullOrEmpty(loginPasswordInput.text))
+                return;
+
+            UserData userData = new UserData("", loginUserNameInput.text, loginPasswordInput.text, 00);
+            string strUserData = JsonUtility.ToJson(userData);
+            SocketEvent dataToServer = new SocketEvent("Login", strUserData);
             string dataToServerStr = JsonUtility.ToJson(dataToServer);
             webSocket.Send(dataToServerStr);
             
-            Debug.Log(userName+"has login");
+            Debug.Log(loginUserNameInput.text + "Request login");
         }
-        public void OnClickMarioBtn()
+
+        public void OnClickBackToLoginBtn()
         {
-            profileID = 1;
-            profilePic.sprite = pic_sprites[profileID];
-            profileOnChatPic.sprite = pic_sprites[profileID];
+            registerPanal.SetActive(false);
+            loginUserNameInput.text = "";
+            loginPasswordInput.text = "";
+            regisNameInput.text = "";
+            regisUserNameInput.text = "";
+            regisPasswordInput.text = "";
+            regisRePasswordInput.text = "";
+            profileID = 0;
+            profilePic.sprite = pic_sprites[0];
         }
-        public void OnClickNadechBtn()
+
+        public void OnClickRegisterBtn()
         {
-            profileID = 2;
-            profilePic.sprite = pic_sprites[profileID];
-            profileOnChatPic.sprite = pic_sprites[profileID];
+            if (string.IsNullOrEmpty(regisNameInput.text) &&
+                string.IsNullOrEmpty(regisUserNameInput.text) &&
+                string.IsNullOrEmpty(regisPasswordInput.text) &&
+                string.IsNullOrEmpty(regisRePasswordInput.text))
+            {
+                registerPanal.SetActive(true);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(regisNameInput.text) ||
+                string.IsNullOrEmpty(regisUserNameInput.text) ||
+                string.IsNullOrEmpty(regisPasswordInput.text) ||
+                string.IsNullOrEmpty(regisRePasswordInput.text))
+            {
+                ShowErrorPopup("Please fill out all information.", Color.red);
+                return;
+            }
+            else
+            {
+                if(regisPasswordInput.text == regisRePasswordInput.text)
+                {
+                    UserData userData = new UserData(regisNameInput.text, 
+                        regisUserNameInput.text, regisPasswordInput.text, profileID);
+                    string strUserData = JsonUtility.ToJson(userData);
+                    SocketEvent dataToServer = new SocketEvent("Register", strUserData);
+                    string dataToServerStr = JsonUtility.ToJson(dataToServer);
+                    webSocket.Send(dataToServerStr);
+
+                    Debug.Log(regisUserNameInput.text + "Request Register");
+                }
+                else
+                {
+                    ShowErrorPopup("Password and Re-Password Not Match", Color.red);
+                }
+                
+            }
+
         }
-        public void OnClickBaifernBtn()
+
+        public void OnChoosePicProFile(int profileSprite_Index)
         {
-            profileID = 3;
-            profilePic.sprite = pic_sprites[profileID];
-            profileOnChatPic.sprite = pic_sprites[profileID];
-        }
-        public void OnClickYayaBtn()
-        {
-            profileID = 4;
-            profilePic.sprite = pic_sprites[profileID];
-            profileOnChatPic.sprite = pic_sprites[profileID];
+            profileID = profileSprite_Index;
+            profilePic.sprite = pic_sprites[profileSprite_Index];
         }
 
         public void OnClickCreateBtn()
@@ -242,9 +330,9 @@ namespace PorgramChat
                 createRoomBtn.gameObject.SetActive(true);
                 roomNameInputField.gameObject.SetActive(true);
                 backBtn.gameObject.SetActive(true);
+                lobbyText.text = "Create Room";
             }
         }
-
         public void OnClickJoinBtn()
         {
             //send request Join to server
@@ -262,9 +350,9 @@ namespace PorgramChat
                 joinRoomBtn.gameObject.SetActive(true);
                 roomNameInputField.gameObject.SetActive(true);
                 backBtn.gameObject.SetActive(true);
+                lobbyText.text = "Join Room";
             }
         }
-
         public void OnClickBackBtn()
         {
             lobbyPanal.SetActive(true);
@@ -273,34 +361,22 @@ namespace PorgramChat
             joinRoomBtn.transform.position = uiLobbyDown;
             joinRoomBtn.gameObject.SetActive(true);
             roomNameInputField.gameObject.SetActive(false);
+            lobbyText.text = "Create or Join Room";
             roomNameInputField.text = "";
 
             backBtn.gameObject.SetActive(false);
         }
-
-        private void innitLobby()
+        public void OnClickOkBtnInPopup()
         {
             erorrPopupPanal.SetActive(false);
-            lobbyPanal.SetActive(true);
-            backBtn.gameObject.SetActive(false);
-            uiLobbyUp = createRoomBtn.gameObject.transform.position;
-            uiLobbyDown = joinRoomBtn.gameObject.transform.position;
-           
-        }
-
-        private void JoinRoom(string roomName)
-        {
-            lobbyPanal.SetActive(false);
-            roomNameOnChat.text = "Room : " + roomName;
-            this.roomName = roomName;
         }
 
         public void LeaveRoom()
         {
-            OnClickBackBtn();          
+            OnClickBackBtn();  //Back To Lobby Panal        
 
             //Clear Old Text
-            for(int i = 0; i < oldText.Count; i++)
+            for (int i = 0; i < oldText.Count; i++)
             {
                 Destroy(oldText[i].gameObject);
             }
@@ -314,33 +390,70 @@ namespace PorgramChat
             webSocket.Send(dataToServerStr);
         }
 
-        private void ShowErrorPopup(string errorMessage)
+
+        //************* >>End Button<< ***************
+        private void innitLobby()
         {
+            loginPanal.SetActive(false);
+            registerPanal.SetActive(false);
+            erorrPopupPanal.SetActive(false);
+            lobbyPanal.SetActive(true);
+            backBtn.gameObject.SetActive(false);
+            uiLobbyUp = createRoomBtn.gameObject.transform.position;
+            uiLobbyDown = joinRoomBtn.gameObject.transform.position;
+            lobbyText.text = "Create or Join Room";
+        }
+
+        private void JoinRoom(string roomName)
+        {
+            lobbyPanal.SetActive(false);
+            roomNameOnChat.text = "Room : " + roomName;
+            this.roomName = roomName;
+        }
+
+        
+        private void ShowErrorPopup(string errorMessage, Color color)
+        {
+            
+            erorrPopupPanal.gameObject.GetComponent<Image>().color = color; 
             erorrPopupPanal.SetActive(true);
             erorrText.text = errorMessage;
         }
 
-        public void OnClickOkBtnInPopup()
-        {
-            erorrPopupPanal.SetActive(false);
-        }
+        
     }
 
     public class MessageData
     {
         public string roomName;
-        public string clientName;
+        public string name;
+        public string userName;
         public string message;
         public int profileClientID;
 
-        public MessageData(string _roomName, string _clientName, string _message, int _profileClientID)
+        public MessageData(string _roomName, string _name, string _userName, string _message, int _profileClientID)
         {
-            clientName = _clientName;
+            name = _name;
+            userName = _userName;
             message = _message;
             profileClientID = _profileClientID;
             roomName = _roomName;
         }
+    }
+    public class UserData
+    {
+        public string name;
+        public string userName;
+        public string password;
+        public int profileClientID;
 
+        public UserData(string _name, string _userName, string _password, int _profileClientID)
+        {
+            name = _name;
+            userName = _userName;
+            profileClientID = _profileClientID;
+            password = _password;
+        }
     }
 
 }
